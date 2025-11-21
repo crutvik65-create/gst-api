@@ -2,9 +2,11 @@ import base64
 import re
 import time
 import uuid
+
 from io import BytesIO
 
 from flask import Flask, jsonify, request
+from flask_cors import CORS
 import requests
 from requests.utils import dict_from_cookiejar, cookiejar_from_dict
 
@@ -17,12 +19,16 @@ GST_GOOD_SERVICE = GST_BASE + "services/api/search/goodservice"
 
 app = Flask(__name__)
 
+# Enable CORS for all /gst/* endpoints (frontend can call from any origin)
+CORS(app, resources={r"/gst/*": {"origins": "*"}})
+
 # -------- Session Storage -------- #
 SESSION_TTL = 300  # 5 min TTL
 SESSION_STORE = {}  # sessionId → cookie jar
 
 GSTIN_REGEX = re.compile(
-    r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]$", re.IGNORECASE
+    r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]$",
+    re.IGNORECASE,
 )
 
 CORE_BUSINESS_MAP = {
@@ -47,7 +53,8 @@ def validate_gstin(gstin: str) -> bool:
 def cleanup_sessions():
     now = time.time()
     expired = [
-        sid for sid, d in SESSION_STORE.items()
+        sid
+        for sid, d in SESSION_STORE.items()
         if now - d["created_at"] > SESSION_TTL
     ]
     for sid in expired:
@@ -58,15 +65,24 @@ def cleanup_sessions():
 #  START GST SESSION → SET COOKIES + GET CAPTCHA
 # --------------------------------------------------------------------
 def start_session():
+    """
+    1) Hit GST search page to get cookies
+    2) Fetch captcha image
+    """
     s = requests.Session()
     headers = {"User-Agent": "Mozilla/5.0 Chrome/122 Safari/537.36"}
 
-    s.get(GST_SEARCH_PAGE, headers=headers)  # load cookies
+    # Load page to get cookies
+    s.get(GST_SEARCH_PAGE, headers=headers)
 
+    # Get captcha image
     cap = s.get(GST_CAPTCHA, headers=headers)
     cap.raise_for_status()
 
-    img_b64 = "data:image/png;base64," + base64.b64encode(cap.content).decode()
+    img_b64 = (
+        "data:image/png;base64,"
+        + base64.b64encode(cap.content).decode()
+    )
 
     return s, img_b64
 
@@ -123,8 +139,12 @@ def extract_hsn(goods_json: dict):
 #  MAP RAW GST DATA → CLEAN JSON OUTPUT
 # --------------------------------------------------------------------
 def map_vendor(raw, goods_json):
-    admin_off = parse_jurisdiction(raw.get("ctj"), "JURISDICTION - CENTER")
-    other_off = parse_jurisdiction(raw.get("stj"), "JURISDICTION - STATE")
+    admin_off = parse_jurisdiction(
+        raw.get("ctj"), "JURISDICTION - CENTER"
+    )
+    other_off = parse_jurisdiction(
+        raw.get("stj"), "JURISDICTION - STATE"
+    )
     principal = parse_principal(raw.get("pradr", {}))
 
     # Core Business (ntcrbs)
@@ -161,7 +181,7 @@ def map_vendor(raw, goods_json):
 
 
 # --------------------------------------------------------------------
-#  API : INIT SESSION
+#  API : INIT SESSION → get captcha + sessionId
 # --------------------------------------------------------------------
 @app.post("/gst/init")
 def api_init():
@@ -175,13 +195,16 @@ def api_init():
             "created_at": time.time(),
         }
 
-        return jsonify({
-            "success": True,
-            "sessionId": sid,
-            "captcha": captcha_b64
-        })
+        # NOTE: using captchaImageBase64 so frontend can use data.captchaImageBase64
+        return jsonify(
+            {
+                "success": True,
+                "sessionId": sid,
+                "captchaImageBase64": captcha_b64,
+            }
+        )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "INIT_FAILED"}), 500
 
 
@@ -194,7 +217,10 @@ def api_captcha():
     sid = data.get("sessionId")
 
     if not sid or sid not in SESSION_STORE:
-        return jsonify({"success": False, "error": "SESSION_EXPIRED"}), 410
+        return (
+            jsonify({"success": False, "error": "SESSION_EXPIRED"}),
+            410,
+        )
 
     sess = SESSION_STORE[sid]
     s = requests.Session()
@@ -202,14 +228,21 @@ def api_captcha():
 
     cap = s.get(GST_CAPTCHA)
     if cap.status_code != 200:
-        return jsonify({"success": False, "error": "CAPTCHA_FAILED"}), 500
+        return (
+            jsonify({"success": False, "error": "CAPTCHA_FAILED"}),
+            500,
+        )
 
-    img_b64 = "data:image/png;base64," + base64.b64encode(cap.content).decode()
+    img_b64 = (
+        "data:image/png;base64,"
+        + base64.b64encode(cap.content).decode()
+    )
 
     sess["cookies"] = dict_from_cookiejar(s.cookies)
     sess["created_at"] = time.time()
 
-    return jsonify({"success": True, "captcha": img_b64})
+    # Again: same key as init
+    return jsonify({"success": True, "captchaImageBase64": img_b64})
 
 
 # --------------------------------------------------------------------
@@ -224,49 +257,74 @@ def api_verify():
         sid = payload.get("sessionId")
 
         if not validate_gstin(gstin):
-            return jsonify({"success": False, "error": "INVALID_GSTIN"}), 400
+            return (
+                jsonify(
+                    {"success": False, "error": "INVALID_GSTIN"}
+                ),
+                400,
+            )
 
         if sid not in SESSION_STORE:
-            return jsonify({"success": False, "error": "SESSION_EXPIRED"}), 410
+            return (
+                jsonify(
+                    {"success": False, "error": "SESSION_EXPIRED"}
+                ),
+                410,
+            )
 
         session = requests.Session()
-        session.cookies = cookiejar_from_dict(SESSION_STORE[sid]["cookies"])
+        session.cookies = cookiejar_from_dict(
+            SESSION_STORE[sid]["cookies"]
+        )
 
         headers = {
             "User-Agent": "Mozilla/5.0",
             "Content-Type": "application/json",
             "Origin": "https://services.gst.gov.in",
-            "Referer": "https://services.gst.gov.in/services/searchtp"
+            "Referer": "https://services.gst.gov.in/services/searchtp",
         }
 
         # ------- Taxpayer details -------
-        r1 = session.post(GST_TAXPAYER, json={
-            "gstin": gstin,
-            "captcha": captcha
-        }, headers=headers)
+        r1 = session.post(
+            GST_TAXPAYER,
+            json={"gstin": gstin, "captcha": captcha},
+            headers=headers,
+        )
 
         data = r1.json()
 
         if "error" in data:
-            return jsonify({"success": False, "error": "CAPTCHA_INVALID"}), 400
+            return (
+                jsonify(
+                    {"success": False, "error": "CAPTCHA_INVALID"}
+                ),
+                400,
+            )
 
         # ------- Goods & Services -------
-        r2 = session.get(f"{GST_GOOD_SERVICE}?gstin={gstin}", headers=headers)
+        r2 = session.get(
+            f"{GST_GOOD_SERVICE}?gstin={gstin}", headers=headers
+        )
         goods_json = r2.json() if r2.status_code == 200 else {}
 
         mapped = map_vendor(data, goods_json)
 
-        return jsonify({
-            "success": True,
-            "vendor": mapped,
-            "raw": data,
-            "goodsService": goods_json
-        })
+        return jsonify(
+            {
+                "success": True,
+                "vendor": mapped,
+                "raw": data,
+                "goodsService": goods_json,
+            }
+        )
 
-    except Exception as e:
-        return jsonify({"success": False, "error": "VERIFY_FAILED"}), 500
+    except Exception:
+        return (
+            jsonify({"success": False, "error": "VERIFY_FAILED"}),
+            500,
+        )
 
 
-# ----------------- RUN SERVER ----------------- #
+# ----------------- RUN SERVER (local dev) ----------------- #
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080, debug=True)
