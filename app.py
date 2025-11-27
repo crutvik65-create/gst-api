@@ -253,9 +253,10 @@ def api_verify():
     try:
         payload = request.get_json() or {}
         gstin = payload.get("gstin", "").upper().strip()
-        captcha = payload.get("captcha", "")
+        captcha = payload.get("captcha", "").strip()
         sid = payload.get("sessionId")
 
+        # Check if GSTIN format is invalid - return 400 error
         if not validate_gstin(gstin):
             return (
                 jsonify(
@@ -306,20 +307,117 @@ def api_verify():
             headers=headers,
         )
 
-        data = r1.json()
+        # Log the response for debugging (remove in production)
+        print(f"========== GST API DEBUG ==========")
+        print(f"Status Code: {r1.status_code}")
+        print(f"Response Headers: {dict(r1.headers)}")
+        print(f"Response Text: {r1.text}")
+        print(f"Input GSTIN: {gstin}")
+        print(f"Input Captcha: {captcha}")
+        print(f"===================================")
 
-        # Check if there's an error in the response (wrong captcha or GSTIN not found)
-        if "error" in data:
-            error_detail = data.get("error", {})
-            error_message = error_detail.get("message", "")
+        # Handle HTTP error responses (400, 500, etc.)
+        if r1.status_code != 200:
+            error_text = r1.text.strip()
             
-            # Handle invalid captcha error
-            if "captcha" in error_message.lower() or "invalid" in error_message.lower():
+            print(f"ERROR DETECTED - Analyzing: '{error_text}'")
+            
+            # Check if it's a captcha error
+            # GST API returns plain text error messages for captcha failures
+            if "captcha" in error_text.lower():
+                print("CAPTCHA ERROR DETECTED")
                 return (
                     jsonify(
                         {
                             "success": False,
                             "error": "Enter valid letters shown in the image below"
+                        }
+                    ),
+                    400,
+                )
+            
+            # Check if it's a GSTIN error
+            if "gstin" in error_text.lower() or "invalid" in error_text.lower():
+                print("GSTIN ERROR DETECTED")
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "error": "The GSTIN/UIN that you have entered is invalid. Please enter a valid GSTIN/UIN."
+                        }
+                    ),
+                    400,
+                )
+            
+            # Generic error
+            print("GENERIC ERROR")
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": error_text or "GST verification failed"
+                    }
+                ),
+                400,
+            )
+
+        data = r1.json()
+
+        # Check if there's an errorCode in the response (GST API standard error format)
+        if "errorCode" in data:
+            error_code = data.get("errorCode", "")
+            error_message = data.get("message", "")
+            
+            print(f"Error Code detected: {error_code}, Message: {error_message}")
+            
+            # SWEB_9000 is the captcha validation error code
+            if error_code == "SWEB_9000":
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "error": "Enter valid letters shown in the image below"
+                        }
+                    ),
+                    400,
+                )
+            
+            # Handle other error codes
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": error_message or f"Verification failed (Error: {error_code})"
+                    }
+                ),
+                400,
+            )
+
+        # Check if there's an error in the response (wrong captcha or GSTIN not found)
+        if "error" in data:
+            error_detail = data.get("error", {})
+            
+            # error_detail could be a string or dict
+            if isinstance(error_detail, dict):
+                error_message = error_detail.get("message", "")
+                error_code = error_detail.get("code", "")
+            else:
+                error_message = str(error_detail)
+                error_code = ""
+            
+            print(f"Error detected - Message: {error_message}, Code: {error_code}")
+            
+            # Handle invalid captcha error - check multiple conditions
+            if (
+                "captcha" in error_message.lower() 
+                or "captcha" in error_code.lower()
+                or error_code == "INVALID_CAPTCHA"
+            ):
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "error": "400 Enter valid letters shown in the image below"
                         }
                     ),
                     400,
@@ -343,12 +441,11 @@ def api_verify():
                 jsonify(
                     {
                         "success": False,
-                        "error": "The GSTIN/UIN that you have entered is invalid. Please enter a valid GSTIN/UIN."
+                        "error": "400 The GSTIN/UIN that you have entered is invalid. Please enter a valid GSTIN/UIN."
                     }
                 ),
                 400,
             )
-
 
 
 
