@@ -259,7 +259,22 @@ def api_verify():
         if not validate_gstin(gstin):
             return (
                 jsonify(
-                    {"success": False, "error": "INVALID_GSTIN"}
+                    {
+                        "success": False,
+                        "error": "The GSTIN/UIN that you have entered is invalid. Please enter a valid GSTIN/UIN."
+                    }
+                ),
+                400,
+            )
+
+        # Check if captcha is empty
+        if not captcha:
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "Enter valid letters shown in the image below"
+                    }
                 ),
                 400,
             )
@@ -320,6 +335,20 @@ def api_verify():
                 ),
                 400,
             )
+        
+        # Check if GSTIN is valid but doesn't exist in database
+        # The GST API returns empty/null for these key fields when GSTIN is not found
+        if not data.get("gstin") or not data.get("lgnm"):
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "The GSTIN/UIN that you have entered is invalid. Please enter a valid GSTIN/UIN."
+                    }
+                ),
+                400,
+            )
+
 
 
 
