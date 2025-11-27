@@ -293,13 +293,35 @@ def api_verify():
 
         data = r1.json()
 
+        # Check if there's an error in the response (wrong captcha or GSTIN not found)
         if "error" in data:
+            error_detail = data.get("error", {})
+            error_message = error_detail.get("message", "")
+            
+            # Handle invalid captcha error
+            if "captcha" in error_message.lower() or "invalid" in error_message.lower():
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "error": "Enter valid letters shown in the image below"
+                        }
+                    ),
+                    400,
+                )
+            
+            # Handle GSTIN not found or other errors
             return (
                 jsonify(
-                    {"success": False, "error": "CAPTCHA_INVALID"}
+                    {
+                        "success": False,
+                        "error": error_message or "GSTIN verification failed"
+                    }
                 ),
                 400,
             )
+
+
 
         # ------- Goods & Services -------
         r2 = session.get(
