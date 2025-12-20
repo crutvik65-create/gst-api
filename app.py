@@ -27,7 +27,7 @@ CORS(
         r"/*": {
             "origins": [
                 "http://localhost:5173",
-                "https://your-frontend.onrender.com"
+                "https://dev-navlik.omnierp.ai/"
             ]
         }
     }
