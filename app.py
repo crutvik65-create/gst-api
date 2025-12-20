@@ -183,6 +183,14 @@ def map_vendor(raw, goods_json):
 # --------------------------------------------------------------------
 #  API : INIT SESSION → get captcha + sessionId
 # --------------------------------------------------------------------
+
+@app.get("/")
+def health():
+    return jsonify({
+        "status": "ok",
+        "service": "GST Verification API"
+    })
+
 @app.post("/gst/init")
 def api_init():
     try:
