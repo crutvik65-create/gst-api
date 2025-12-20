@@ -20,18 +20,7 @@ GST_GOOD_SERVICE = GST_BASE + "services/api/search/goodservice"
 app = Flask(__name__)
 
 # Enable CORS for all /gst/* endpoints (frontend can call from any origin)
-CORS(
-    app,
-    resources={
-        r"/gst/*": {
-            "origins": [
-                "http://localhost:5173",
-                "https://gst-dg1j.onrender.com"  # NEW Render URL
-            ]
-        }
-    }
-)
-
+CORS(app, resources={r"/gst/*": {"origins": "*"}})
 
 # -------- Session Storage -------- #
 SESSION_TTL = 300  # 5 min TTL
@@ -201,20 +190,6 @@ def health():
         "status": "ok",
         "service": "GST Verification API"
     })
-
-@app.after_request
-def force_cors(response):
-    origin = request.headers.get("Origin")
-    allowed = [
-        "http://localhost:5173",
-        "https://gst-dg1j.onrender.com"
-    ]
-    if origin in allowed:
-        response.headers["Access-Control-Allow-Origin"] = origin
-
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
-    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-    return response
 
 @app.post("/gst/init")
 def api_init():
