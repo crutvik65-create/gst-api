@@ -20,7 +20,7 @@ GST_GOOD_SERVICE = GST_BASE + "services/api/search/goodservice"
 app = Flask(__name__)
 
 # Enable CORS for all /gst/* endpoints (frontend can call from any origin)
-CORS(app, resources={r"/gst/*": {"origins": "*"}})
+CORS(app, resources={r"/gst/*": {"origins": ["*","https://gst-dg1j.onrender.com"]}})
 
 # -------- Session Storage -------- #
 SESSION_TTL = 300  # 5 min TTL
