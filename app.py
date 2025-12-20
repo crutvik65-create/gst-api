@@ -24,11 +24,7 @@ from flask_cors import CORS
 
 CORS(
     app,
-    resources={
-        r"/gst/*": {
-            "origins": "*"
-        }
-    }
+    resources={r"/*": {"origins": "*"}}
 )
 
 # -------- Session Storage -------- #
