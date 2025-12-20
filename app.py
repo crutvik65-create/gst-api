@@ -26,7 +26,7 @@ CORS(
     app,
     resources={
         r"/gst/*": {
-            "origins": "http://localhost:5173"
+            "origins": "*"
         }
     }
 )
