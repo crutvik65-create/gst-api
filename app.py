@@ -27,7 +27,8 @@ CORS(
         r"/*": {
             "origins": [
                 "http://localhost:5173",
-                "https://dev-navlik.omnierp.ai"
+                "https://dev-navlik.omnierp.ai",
+                "http://localhost:3000"
             ]
         }
     }
