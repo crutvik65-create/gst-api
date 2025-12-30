@@ -28,7 +28,9 @@ CORS(
             "origins": [
                 "http://localhost:5173",
                 "https://dev-navlik.omnierp.ai",
-                "http://localhost:3000"
+                "http://localhost:3000",
+                "https://admin.trackvid.in",
+                "https://dev-admin.trackvid.in"
             ]
         }
     }
